@@ -1,4 +1,3 @@
-
 package com.example.demo.repository;
 
 import com.example.demo.entity.Customer;
@@ -10,6 +9,9 @@ import com.example.demo.entity.TransactionAudit;
 import org.junit.jupiter.api.BeforeEach;
 import java.math.BigDecimal;
 import java.util.UUID;
+
+import jakarta.persistence.EntityManager;
+import java.time.LocalDateTime;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,68 +41,113 @@ class RepositoryIntegrationTest {
     @Autowired
     private TransactionAuditRepository transactionAuditRepository;
 
+    @Autowired
+    private EntityManager entityManager;
+
     private BankTransaction createTestTransaction(
-        String type,
-        Account sourceAccount,
-        Account destinationAccount,
-        BigDecimal amount) {
+            String type,
+            Account sourceAccount,
+            Account destinationAccount,
+            BigDecimal amount) {
 
-    BankTransaction transaction = new BankTransaction();
+        BankTransaction transaction = new BankTransaction();
 
-    transaction.setIdempotencyKey(
-            "TEST-" + UUID.randomUUID());
+        transaction.setIdempotencyKey(
+                "TEST-" + UUID.randomUUID());
 
-    transaction.setTransactionType(type);
+        transaction.setTransactionType(type);
 
-    transaction.setSourceAccount(sourceAccount);
+        transaction.setSourceAccount(sourceAccount);
 
-    transaction.setDestinationAccount(destinationAccount);
+        transaction.setDestinationAccount(destinationAccount);
 
-    transaction.setAmount(amount);
+        transaction.setAmount(amount);
 
-    transaction.setStatus("PENDING");
+        transaction.setStatus("PENDING");
 
-    transaction.setDescription(
-            "Temporary repository integration test");
+        transaction.setDescription(
+                "Temporary repository integration test");
 
-    return bankTransactionRepository.saveAndFlush(transaction);
-}
+        return bankTransactionRepository.saveAndFlush(transaction);
+    }
 
-@BeforeEach
-void setUpTestData() {
+    @BeforeEach
+    void setUpTestData() {
 
-    List<Account> accounts = accountRepository.findAll();
+        List<Account> accounts = accountRepository.findAll();
 
-    assertTrue(accounts.size() >= 2,
-            "At least two sample accounts are required");
+        assertTrue(accounts.size() >= 2,
+                "At least two sample accounts are required");
 
-    Account account1 = accounts.get(0);
-    Account account2 = accounts.get(1);
+        Account account1 = accounts.get(0);
+        Account account2 = accounts.get(1);
 
-    // Sample deposit
-    createTestTransaction(
-            "DEPOSIT",
-            null,
-            account1,
-            new BigDecimal("500.00"));
+        // Sample deposit
+        createTestTransaction(
+                "DEPOSIT",
+                null,
+                account1,
+                new BigDecimal("500.00"));
 
-    // Sample withdrawal
-    createTestTransaction(
-            "WITHDRAWAL",
-            account1,
-            null,
-            new BigDecimal("200.00"));
+        // Sample withdrawal
+        createTestTransaction(
+                "WITHDRAWAL",
+                account1,
+                null,
+                new BigDecimal("200.00"));
 
-    // Sample transfer
-    createTestTransaction(
-            "TRANSFER",
-            account1,
-            account2,
-            new BigDecimal("1000.00"));
+        // Sample transfer
+        createTestTransaction(
+                "TRANSFER",
+                account1,
+                account2,
+                new BigDecimal("1000.00"));
 
-    System.out.println(
-            "Temporary transaction test data created");
-}
+        System.out.println(
+                "Temporary transaction test data created");
+
+    }
+    private TransactionAudit createTestAudit(
+            BankTransaction transaction,
+            String eventType,
+            String previousStatus,
+            String newStatus,
+            String message) {
+
+        TransactionAudit audit = new TransactionAudit();
+
+        audit.setTransaction(transaction);
+
+        audit.setIdempotencyKey(
+                transaction.getIdempotencyKey());
+
+        audit.setEventType(eventType);
+
+        audit.setPreviousStatus(previousStatus);
+
+        audit.setNewStatus(newStatus);
+
+        audit.setMessage(message);
+
+        return transactionAuditRepository.saveAndFlush(audit);
+    }
+
+    private FailedTransaction createTestFailure(BankTransaction transaction) {
+
+        FailedTransaction failure = new FailedTransaction();
+
+        failure.setTransaction(transaction);
+
+        failure.setIdempotencyKey(
+                transaction.getIdempotencyKey());
+
+        failure.setFailureReason("INSUFFICIENT_BALANCE");
+
+        failure.setFailureDescription(
+                "Temporary failure record for integration testing");
+
+        return failedTransactionRepository.saveAndFlush(failure);
+    }
 
     @Test
     void testCustomerRepository() {
@@ -206,420 +253,543 @@ void setUpTestData() {
     @Test
     void testFindCustomerByEmail() {
         Customer existingCustomer =
-        customerRepository.findAll().get(0);
-        
+                customerRepository.findAll().get(0);
+
         Customer foundCustomer = customerRepository.findByEmail(existingCustomer.getEmail()).orElseThrow();
         assertEquals(existingCustomer.getCustomerId(),
-        foundCustomer.getCustomerId());
+                foundCustomer.getCustomerId());
         System.out.println("Find customer by email: PASSED");
-}
-
-@Test
-void testExistsByEmail() {
-
-    Customer existingCustomer =
-            customerRepository.findAll().get(0);
-
-    assertTrue(customerRepository.existsByEmail(
-            existingCustomer.getEmail()));
-
-    System.out.println("Customer existence check: PASSED");
-}
-
-@Test
-void testFindNonExistingCustomer() {
-
-    assertTrue(customerRepository
-            .findByEmail("nonexistent@example.invalid")
-            .isEmpty());
-
-    System.out.println("Nonexistent customer check: PASSED");
-}
-
-@Test
-void testFindByAccountNumber() {
-
-    Account existingAccount =
-            accountRepository.findAll().get(0);
-
-    Account foundAccount = accountRepository
-            .findByAccountNumber(
-                    existingAccount.getAccountNumber())
-            .orElseThrow();
-
-    assertEquals(existingAccount.getAccountId(),
-            foundAccount.getAccountId());
-
-    System.out.println("Find account by number: PASSED");
-}
-
-@Test
-void testExistsByAccountNumber() {
-
-    Account existingAccount =
-            accountRepository.findAll().get(0);
-
-    assertTrue(accountRepository.existsByAccountNumber(
-            existingAccount.getAccountNumber()));
-
-    System.out.println("Account existence check: PASSED");
-}
-
-@Test
-void testFindAccountsByCustomerId() {
-
-    Account existingAccount =
-            accountRepository.findAll().get(0);
-
-    Long customerId =
-            existingAccount.getCustomer().getCustomerId();
-
-    List<Account> accounts =
-            accountRepository.findByCustomer_CustomerId(
-                    customerId);
-
-    assertFalse(accounts.isEmpty());
-
-    for (Account account : accounts) {
-
-        assertEquals(customerId,
-                account.getCustomer().getCustomerId());
     }
 
-    assertTrue(accounts.stream().anyMatch(account ->
-            account.getAccountId().equals(
-                    existingAccount.getAccountId())));
+    @Test
+    void testExistsByEmail() {
 
-    System.out.println("Customer account relationship: PASSED");
-}
+        Customer existingCustomer =
+                customerRepository.findAll().get(0);
 
-@Test
-void testFindByAccountStatus() {
+        assertTrue(customerRepository.existsByEmail(
+                existingCustomer.getEmail()));
 
-    Account existingAccount =
-            accountRepository.findAll().get(0);
-
-    String status = existingAccount.getAccountStatus();
-
-    List<Account> accounts =
-            accountRepository.findByAccountStatus(status);
-
-    assertFalse(accounts.isEmpty());
-
-    for (Account account : accounts) {
-
-        assertEquals(status, account.getAccountStatus());
+        System.out.println("Customer existence check: PASSED");
     }
 
-    System.out.println("Find accounts by status: PASSED");
-}
+    @Test
+    void testFindNonExistingCustomer() {
 
-@Test
-void testFindByIdempotencyKey() {
+        assertTrue(customerRepository
+                .findByEmail("nonexistent@example.invalid")
+                .isEmpty());
 
-    List<BankTransaction> transactions =
-            bankTransactionRepository.findAll();
-
-    assertFalse(transactions.isEmpty(),
-            "Sample transactions are required");
-
-    BankTransaction existingTransaction =
-            transactions.get(0);
-
-    BankTransaction foundTransaction =
-            bankTransactionRepository
-                    .findByIdempotencyKey(
-                            existingTransaction.getIdempotencyKey())
-                    .orElseThrow();
-
-    assertEquals(
-            existingTransaction.getTransactionId(),
-            foundTransaction.getTransactionId());
-
-    System.out.println("Find by idempotency key: PASSED");
-}
-
-@Test
-void testExistsByIdempotencyKey() {
-
-    BankTransaction transaction =
-            bankTransactionRepository.findAll().get(0);
-
-    assertTrue(
-            bankTransactionRepository.existsByIdempotencyKey(
-                    transaction.getIdempotencyKey()));
-
-    System.out.println("Idempotency existence check: PASSED");
-}
-
-@Test
-void testNonExistingIdempotencyKey() {
-
-    String key = java.util.UUID.randomUUID().toString();
-
-    assertFalse(
-            bankTransactionRepository.existsByIdempotencyKey(key));
-
-    assertTrue(
-            bankTransactionRepository
-                    .findByIdempotencyKey(key)
-                    .isEmpty());
-
-    System.out.println("Nonexistent idempotency key: PASSED");
-}
-
-@Test
-void testFindTransactionsByStatus() {
-
-    BankTransaction existingTransaction =
-            bankTransactionRepository.findAll().get(0);
-
-    String status = existingTransaction.getStatus();
-
-    List<BankTransaction> transactions =
-            bankTransactionRepository.findByStatus(status);
-
-    assertFalse(transactions.isEmpty());
-
-    for (BankTransaction transaction : transactions) {
-
-        assertEquals(status, transaction.getStatus());
+        System.out.println("Nonexistent customer check: PASSED");
     }
 
-    System.out.println("Find transactions by status: PASSED");
-}
+    @Test
+    void testFindByAccountNumber() {
 
-@Test
-void testFindByTransactionType() {
+        Account existingAccount =
+                accountRepository.findAll().get(0);
 
-    BankTransaction existingTransaction =
-            bankTransactionRepository.findAll().get(0);
+        Account foundAccount = accountRepository
+                .findByAccountNumber(
+                existingAccount.getAccountNumber())
+                .orElseThrow();
 
-    String type = existingTransaction.getTransactionType();
+        assertEquals(existingAccount.getAccountId(),
+                foundAccount.getAccountId());
 
-    List<BankTransaction> transactions =
-            bankTransactionRepository.findByTransactionType(type);
-
-    assertFalse(transactions.isEmpty());
-
-    for (BankTransaction transaction : transactions) {
-
-        assertEquals(type, transaction.getTransactionType());
+        System.out.println("Find account by number: PASSED");
     }
 
-    System.out.println("Find transactions by type: PASSED");
-}
+    @Test
+    void testExistsByAccountNumber() {
 
-@Test
-void testFindBySourceAccount() {
+        Account existingAccount =
+                accountRepository.findAll().get(0);
 
-    List<BankTransaction> allTransactions =
-            bankTransactionRepository.findAll();
+        assertTrue(accountRepository.existsByAccountNumber(
+                existingAccount.getAccountNumber()));
 
-    for (Account account : accountRepository.findAll()) {
+        System.out.println("Account existence check: PASSED");
+    }
 
-        Long accountId = account.getAccountId();
+    @Test
+    void testFindAccountsByCustomerId() {
 
-        long expectedCount = allTransactions.stream()
-                .filter(t -> t.getSourceAccount() != null)
-                .filter(t -> accountId.equals(
-                        t.getSourceAccount().getAccountId()))
-                .count();
+        Account existingAccount =
+                accountRepository.findAll().get(0);
+
+        Long customerId =
+                existingAccount.getCustomer().getCustomerId();
+
+        List<Account> accounts =
+                accountRepository.findByCustomer_CustomerId(
+                customerId);
+
+        assertFalse(accounts.isEmpty());
+
+        for (Account account : accounts) {
+
+            assertEquals(customerId,
+                    account.getCustomer().getCustomerId());
+        }
+
+        assertTrue(accounts.stream().anyMatch(account ->
+                account.getAccountId().equals(
+                existingAccount.getAccountId())));
+
+        System.out.println("Customer account relationship: PASSED");
+    }
+
+    @Test
+    void testFindByAccountStatus() {
+
+        Account existingAccount =
+                accountRepository.findAll().get(0);
+
+        String status = existingAccount.getAccountStatus();
+
+        List<Account> accounts =
+                accountRepository.findByAccountStatus(status);
+
+        assertFalse(accounts.isEmpty());
+
+        for (Account account : accounts) {
+
+            assertEquals(status, account.getAccountStatus());
+        }
+
+        System.out.println("Find accounts by status: PASSED");
+    }
+
+    @Test
+    void testFindByIdempotencyKey() {
 
         List<BankTransaction> transactions =
-                bankTransactionRepository
-                        .findBySourceAccount_AccountId(accountId);
+                bankTransactionRepository.findAll();
 
-        assertEquals(expectedCount, transactions.size());
+        assertFalse(transactions.isEmpty(),
+                "Sample transactions are required");
+
+        BankTransaction existingTransaction =
+                transactions.get(0);
+
+        BankTransaction foundTransaction =
+                bankTransactionRepository
+                .findByIdempotencyKey(
+                existingTransaction.getIdempotencyKey())
+                .orElseThrow();
+
+        assertEquals(
+                existingTransaction.getTransactionId(),
+                foundTransaction.getTransactionId());
+
+        System.out.println("Find by idempotency key: PASSED");
+    }
+
+    @Test
+    void testExistsByIdempotencyKey() {
+
+        BankTransaction transaction =
+                bankTransactionRepository.findAll().get(0);
+
+        assertTrue(
+                bankTransactionRepository.existsByIdempotencyKey(
+                transaction.getIdempotencyKey()));
+
+        System.out.println("Idempotency existence check: PASSED");
+    }
+
+    @Test
+    void testNonExistingIdempotencyKey() {
+
+        String key = java.util.UUID.randomUUID().toString();
+
+        assertFalse(
+                bankTransactionRepository.existsByIdempotencyKey(key));
+
+        assertTrue(
+                bankTransactionRepository
+                .findByIdempotencyKey(key)
+                .isEmpty());
+
+        System.out.println("Nonexistent idempotency key: PASSED");
+    }
+
+    @Test
+    void testFindTransactionsByStatus() {
+
+        BankTransaction existingTransaction =
+                bankTransactionRepository.findAll().get(0);
+
+        String status = existingTransaction.getStatus();
+
+        List<BankTransaction> transactions =
+                bankTransactionRepository.findByStatus(status);
+
+        assertFalse(transactions.isEmpty());
 
         for (BankTransaction transaction : transactions) {
 
-            assertEquals(accountId,
-                    transaction.getSourceAccount().getAccountId());
+            assertEquals(status, transaction.getStatus());
         }
+
+        System.out.println("Find transactions by status: PASSED");
     }
 
-    System.out.println("Source account query: PASSED");
-}
+    @Test
+    void testFindByTransactionType() {
 
-@Test
-void testFindByDestinationAccount() {
+        BankTransaction existingTransaction =
+                bankTransactionRepository.findAll().get(0);
 
-    List<BankTransaction> allTransactions =
-            bankTransactionRepository.findAll();
-
-    for (Account account : accountRepository.findAll()) {
-
-        Long accountId = account.getAccountId();
-
-        long expectedCount = allTransactions.stream()
-                .filter(t -> t.getDestinationAccount() != null)
-                .filter(t -> accountId.equals(
-                        t.getDestinationAccount().getAccountId()))
-                .count();
+        String type = existingTransaction.getTransactionType();
 
         List<BankTransaction> transactions =
-                bankTransactionRepository
-                        .findByDestinationAccount_AccountId(accountId);
+                bankTransactionRepository.findByTransactionType(type);
 
-        assertEquals(expectedCount, transactions.size());
+        assertFalse(transactions.isEmpty());
 
         for (BankTransaction transaction : transactions) {
 
-            assertEquals(accountId,
-                    transaction.getDestinationAccount().getAccountId());
+            assertEquals(type, transaction.getTransactionType());
         }
+
+        System.out.println("Find transactions by type: PASSED");
     }
 
-    System.out.println("Destination account query: PASSED");
-}
+    @Test
+    void testFindBySourceAccount() {
 
-@Test
-void testFindByFailureReason() {
+        List<BankTransaction> allTransactions =
+                bankTransactionRepository.findAll();
 
-    List<FailedTransaction> failures =
-            failedTransactionRepository.findAll();
+        for (Account account : accountRepository.findAll()) {
 
-    for (FailedTransaction failure : failures) {
+            Long accountId = account.getAccountId();
 
-        String reason = failure.getFailureReason();
+            long expectedCount = allTransactions.stream()
+                    .filter(t -> t.getSourceAccount() != null)
+                    .filter(t -> accountId.equals(
+                    t.getSourceAccount().getAccountId()))
+                    .count();
 
-        List<FailedTransaction> matchingFailures =
-                failedTransactionRepository
-                        .findByFailureReason(reason);
+            List<BankTransaction> transactions =
+                    bankTransactionRepository
+                    .findBySourceAccount_AccountId(accountId);
 
-        assertFalse(matchingFailures.isEmpty());
+            assertEquals(expectedCount, transactions.size());
 
-        for (FailedTransaction matching : matchingFailures) {
+            for (BankTransaction transaction : transactions) {
 
-            assertEquals(reason, matching.getFailureReason());
+                assertEquals(accountId,
+                        transaction.getSourceAccount().getAccountId());
+            }
         }
+
+        System.out.println("Source account query: PASSED");
     }
 
-    assertTrue(failedTransactionRepository
-            .findByFailureReason("NON_EXISTENT_TEST_REASON")
-            .isEmpty());
+    @Test
+    void testFindByDestinationAccount() {
 
-    System.out.println("Failure reason query: PASSED");
-}
+        List<BankTransaction> allTransactions =
+                bankTransactionRepository.findAll();
 
-@Test
-void testFindFailuresByTransactionId() {
+        for (Account account : accountRepository.findAll()) {
 
-    List<FailedTransaction> allFailures =
-            failedTransactionRepository.findAll();
+            Long accountId = account.getAccountId();
 
-    for (BankTransaction transaction :
-            bankTransactionRepository.findAll()) {
+            long expectedCount = allTransactions.stream()
+                    .filter(t -> t.getDestinationAccount() != null)
+                    .filter(t -> accountId.equals(
+                    t.getDestinationAccount().getAccountId()))
+                    .count();
 
-        Long transactionId = transaction.getTransactionId();
+            List<BankTransaction> transactions =
+                    bankTransactionRepository
+                    .findByDestinationAccount_AccountId(accountId);
 
-        long expectedCount = allFailures.stream()
-                .filter(f -> f.getTransaction() != null)
-                .filter(f -> transactionId.equals(
-                        f.getTransaction().getTransactionId()))
-                .count();
+            assertEquals(expectedCount, transactions.size());
+
+            for (BankTransaction transaction : transactions) {
+
+                assertEquals(accountId,
+                        transaction.getDestinationAccount().getAccountId());
+            }
+        }
+
+        System.out.println("Destination account query: PASSED");
+    }
+
+    @Test
+    void testFindByFailureReason() {
 
         List<FailedTransaction> failures =
-                failedTransactionRepository
-                        .findByTransaction_TransactionId(transactionId);
-
-        assertEquals(expectedCount, failures.size());
+                failedTransactionRepository.findAll();
 
         for (FailedTransaction failure : failures) {
 
-            assertEquals(transactionId,
-                    failure.getTransaction().getTransactionId());
+            String reason = failure.getFailureReason();
+
+            List<FailedTransaction> matchingFailures =
+                    failedTransactionRepository
+                    .findByFailureReason(reason);
+
+            assertFalse(matchingFailures.isEmpty());
+
+            for (FailedTransaction matching : matchingFailures) {
+
+                assertEquals(reason, matching.getFailureReason());
+            }
         }
+
+        assertTrue(failedTransactionRepository
+                .findByFailureReason("NON_EXISTENT_TEST_REASON")
+                .isEmpty());
+
+        System.out.println("Failure reason query: PASSED");
     }
 
-    System.out.println("Failed transaction relationship: PASSED");
-}
+    @Test
+    void testFindFailuresByTransactionId() {
 
-@Test
-void testFindFailuresByIdempotencyKey() {
+        List<FailedTransaction> allFailures =
+                failedTransactionRepository.findAll();
 
-    String key = java.util.UUID.randomUUID().toString();
+        for (BankTransaction transaction :
+        bankTransactionRepository.findAll()) {
 
-    assertTrue(failedTransactionRepository
-            .findByIdempotencyKey(key)
-            .isEmpty());
+            Long transactionId = transaction.getTransactionId();
 
-    System.out.println("Failure idempotency lookup: PASSED");
-}
+            long expectedCount = allFailures.stream()
+                    .filter(f -> f.getTransaction() != null)
+                    .filter(f -> transactionId.equals(
+                    f.getTransaction().getTransactionId()))
+                    .count();
 
-@Test
-void testFindAuditsByTransactionId() {
+            List<FailedTransaction> failures =
+                    failedTransactionRepository
+                    .findByTransaction_TransactionId(transactionId);
 
-    List<TransactionAudit> allAudits =
-            transactionAuditRepository.findAll();
+            assertEquals(expectedCount, failures.size());
 
-    for (BankTransaction transaction :
-            bankTransactionRepository.findAll()) {
+            for (FailedTransaction failure : failures) {
 
-        Long transactionId = transaction.getTransactionId();
+                assertEquals(transactionId,
+                        failure.getTransaction().getTransactionId());
+            }
+        }
 
-        long expectedCount = allAudits.stream()
-                .filter(a -> a.getTransaction() != null)
-                .filter(a -> transactionId.equals(
-                        a.getTransaction().getTransactionId()))
-                .count();
+        System.out.println("Failed transaction relationship: PASSED");
+    }
+
+    @Test
+    void testFindFailuresByIdempotencyKey() {
+
+        String key = java.util.UUID.randomUUID().toString();
+
+        assertTrue(failedTransactionRepository
+                .findByIdempotencyKey(key)
+                .isEmpty());
+
+        System.out.println("Failure idempotency lookup: PASSED");
+    }
+
+    @Test
+    void testFindAuditsByTransactionId() {
+
+        List<TransactionAudit> allAudits =
+                transactionAuditRepository.findAll();
+
+        for (BankTransaction transaction :
+        bankTransactionRepository.findAll()) {
+
+            Long transactionId = transaction.getTransactionId();
+
+            long expectedCount = allAudits.stream()
+                    .filter(a -> a.getTransaction() != null)
+                    .filter(a -> transactionId.equals(
+                    a.getTransaction().getTransactionId()))
+                    .count();
+
+            List<TransactionAudit> audits =
+                    transactionAuditRepository
+                    .findByTransaction_TransactionIdOrderByCreatedAtAscAuditIdAsc(
+                    transactionId);
+
+            assertEquals(expectedCount, audits.size());
+
+            for (TransactionAudit audit : audits) {
+
+                assertEquals(transactionId,
+                        audit.getTransaction().getTransactionId());
+            }
+        }
+
+        System.out.println("Transaction audit relationship: PASSED");
+    }
+
+    @Test
+    void testFindByEventType() {
 
         List<TransactionAudit> audits =
-                transactionAuditRepository
-                        .findByTransaction_TransactionIdOrderByCreatedAtAscAuditIdAsc(
-                                transactionId);
-
-        assertEquals(expectedCount, audits.size());
+                transactionAuditRepository.findAll();
 
         for (TransactionAudit audit : audits) {
 
-            assertEquals(transactionId,
-                    audit.getTransaction().getTransactionId());
+            String eventType = audit.getEventType();
+
+            List<TransactionAudit> matchingAudits =
+                    transactionAuditRepository.findByEventType(eventType);
+
+            assertFalse(matchingAudits.isEmpty());
+
+            for (TransactionAudit matching : matchingAudits) {
+
+                assertEquals(eventType, matching.getEventType());
+            }
+        }
+
+        assertTrue(transactionAuditRepository
+                .findByEventType("NON_EXISTENT_TEST_EVENT")
+                .isEmpty());
+
+        System.out.println("Audit event type query: PASSED");
+    }
+
+    @Test
+    void testFindAuditsByIdempotencyKey() {
+
+        String key = java.util.UUID.randomUUID().toString();
+
+        assertTrue(transactionAuditRepository
+                .findByIdempotencyKey(key)
+                .isEmpty());
+
+        System.out.println("Audit idempotency lookup: PASSED");
+    }
+
+    @Test
+    void testFindExistingFailureByReason() {
+        BankTransaction transaction = createFailedFixture();
+        FailedTransaction expected = createTestFailure(transaction);
+        Long id = expected.getFailedId();
+        entityManager.clear();
+        List<FailedTransaction> failures = failedTransactionRepository
+                .findByFailureReason("INSUFFICIENT_BALANCE");
+        assertTrue(failures.stream().anyMatch(f -> id.equals(f.getFailedId())));
+        for (FailedTransaction failure : failures) {
+            assertEquals("INSUFFICIENT_BALANCE", failure.getFailureReason());
         }
     }
 
-    System.out.println("Transaction audit relationship: PASSED");
-}
-
-@Test
-void testFindByEventType() {
-
-    List<TransactionAudit> audits =
-            transactionAuditRepository.findAll();
-
-    for (TransactionAudit audit : audits) {
-
-        String eventType = audit.getEventType();
-
-        List<TransactionAudit> matchingAudits =
-                transactionAuditRepository.findByEventType(eventType);
-
-        assertFalse(matchingAudits.isEmpty());
-
-        for (TransactionAudit matching : matchingAudits) {
-
-            assertEquals(eventType, matching.getEventType());
+    @Test
+    void testFindExistingFailureByTransactionId() {
+        BankTransaction transaction = createFailedFixture();
+        Long transactionId = transaction.getTransactionId();
+        Long id = createTestFailure(transaction).getFailedId();
+        entityManager.clear();
+        List<FailedTransaction> failures = failedTransactionRepository
+                .findByTransaction_TransactionId(transactionId);
+        assertTrue(failures.stream().anyMatch(f -> id.equals(f.getFailedId())));
+        for (FailedTransaction failure : failures) {
+            assertEquals(transactionId, failure.getTransaction().getTransactionId());
         }
     }
 
-    assertTrue(transactionAuditRepository
-            .findByEventType("NON_EXISTENT_TEST_EVENT")
-            .isEmpty());
+    @Test
+    void testFindExistingFailureByIdempotencyKey() {
+        BankTransaction transaction = createFailedFixture();
+        String key = transaction.getIdempotencyKey();
+        Long id = createTestFailure(transaction).getFailedId();
+        entityManager.clear();
+        List<FailedTransaction> failures = failedTransactionRepository
+                .findByIdempotencyKey(key);
+        assertTrue(failures.stream().anyMatch(f -> id.equals(f.getFailedId())));
+        for (FailedTransaction failure : failures) {
+            assertEquals(key, failure.getIdempotencyKey());
+        }
+    }
 
-    System.out.println("Audit event type query: PASSED");
-}
+    @Test
+    void testFindExistingAuditByEventType() {
+        BankTransaction transaction = createAuditFixture();
+        Long id = createTestAudit(transaction, "TRANSACTION_CREATED", null,
+                "PENDING", "Transaction request received").getAuditId();
+        entityManager.clear();
+        List<TransactionAudit> audits = transactionAuditRepository
+                .findByEventType("TRANSACTION_CREATED");
+        assertTrue(audits.stream().anyMatch(a -> id.equals(a.getAuditId())));
+        for (TransactionAudit audit : audits) {
+            assertEquals("TRANSACTION_CREATED", audit.getEventType());
+        }
+    }
 
-@Test
-void testFindAuditsByIdempotencyKey() {
+    @Test
+    void testFindExistingAuditByIdempotencyKey() {
+        BankTransaction transaction = createAuditFixture();
+        String key = transaction.getIdempotencyKey();
+        Long id = createTestAudit(transaction, "TRANSACTION_CREATED", null,
+                "PENDING", "Temporary audit record").getAuditId();
+        entityManager.clear();
+        List<TransactionAudit> audits = transactionAuditRepository.findByIdempotencyKey(key);
+        assertTrue(audits.stream().anyMatch(a -> id.equals(a.getAuditId())));
+        for (TransactionAudit audit : audits) {
+            assertEquals(key, audit.getIdempotencyKey());
+        }
+    }
 
-    String key = java.util.UUID.randomUUID().toString();
+    private BankTransaction createAuditFixture() {
+        Account account = accountRepository.findAll().get(0);
+        return createTestTransaction("DEPOSIT", null, account, new BigDecimal("500.00"));
+    }
 
-    assertTrue(transactionAuditRepository
-            .findByIdempotencyKey(key)
-            .isEmpty());
+    private BankTransaction createFailedFixture() {
+        Account account = accountRepository.findAll().get(0);
+        BankTransaction transaction = createTestTransaction("WITHDRAWAL", account,
+                null, account.getBalance().add(new BigDecimal("1.00")));
+        transaction.setStatus("FAILED");
+        return bankTransactionRepository.saveAndFlush(transaction);
+    }
 
-    System.out.println("Audit idempotency lookup: PASSED");
-}
+    private void setTestAuditTimestamp(Long auditId, LocalDateTime timestamp) {
+        int updated = entityManager.createNativeQuery(
+                "UPDATE transaction_audit SET created_at = :timestamp WHERE audit_id = :auditId")
+                .setParameter("timestamp", timestamp)
+                .setParameter("auditId", auditId)
+                .executeUpdate();
+        assertEquals(1, updated);
+    }
+
+    @Test
+    void testAuditChronologicalOrdering() {
+        BankTransaction transaction = createAuditFixture();
+        Long transactionId = transaction.getTransactionId();
+        Long failedId = createTestAudit(transaction, "TRANSACTION_FAILED", "PENDING",
+                "FAILED", "Transaction failed").getAuditId();
+        Long createdId = createTestAudit(transaction, "TRANSACTION_CREATED", null,
+                "PENDING", "Transaction created").getAuditId();
+        Long validatedId = createTestAudit(transaction, "VALIDATION_COMPLETED", "PENDING",
+                "PENDING", "Validation completed").getAuditId();
+        transaction.setStatus("FAILED");
+        entityManager.flush();
+
+        LocalDateTime baseTime = LocalDateTime.of(2026, 1, 1, 10, 0);
+        setTestAuditTimestamp(failedId, baseTime.plusMinutes(2));
+        setTestAuditTimestamp(createdId, baseTime);
+        setTestAuditTimestamp(validatedId, baseTime);
+        entityManager.flush();
+        entityManager.clear();
+
+        List<TransactionAudit> audits = transactionAuditRepository
+                .findByTransaction_TransactionIdOrderByCreatedAtAscAuditIdAsc(transactionId);
+        assertEquals(3, audits.size());
+        assertEquals(createdId, audits.get(0).getAuditId());
+        assertEquals(validatedId, audits.get(1).getAuditId());
+        assertEquals(failedId, audits.get(2).getAuditId());
+        assertEquals(baseTime, audits.get(0).getCreatedAt());
+        assertEquals(baseTime, audits.get(1).getCreatedAt());
+        assertEquals(baseTime.plusMinutes(2), audits.get(2).getCreatedAt());
+    }
 
 }
