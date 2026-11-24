@@ -136,4 +136,116 @@ class RepositoryIntegrationTest {
         System.out.println("Total audit records: "
                 + audits.size());
     }
+    @Test
+    void testFindCustomerByEmail() {
+        Customer existingCustomer =
+        customerRepository.findAll().get(0);
+        
+        Customer foundCustomer = customerRepository.findByEmail(existingCustomer.getEmail()).orElseThrow();
+        assertEquals(existingCustomer.getCustomerId(),
+        foundCustomer.getCustomerId());
+        System.out.println("Find customer by email: PASSED");
+}
+
+@Test
+void testExistsByEmail() {
+
+    Customer existingCustomer =
+            customerRepository.findAll().get(0);
+
+    assertTrue(customerRepository.existsByEmail(
+            existingCustomer.getEmail()));
+
+    System.out.println("Customer existence check: PASSED");
+}
+
+@Test
+void testFindNonExistingCustomer() {
+
+    assertTrue(customerRepository
+            .findByEmail("nonexistent@example.invalid")
+            .isEmpty());
+
+    System.out.println("Nonexistent customer check: PASSED");
+}
+
+@Test
+void testFindByAccountNumber() {
+
+    Account existingAccount =
+            accountRepository.findAll().get(0);
+
+    Account foundAccount = accountRepository
+            .findByAccountNumber(
+                    existingAccount.getAccountNumber())
+            .orElseThrow();
+
+    assertEquals(existingAccount.getAccountId(),
+            foundAccount.getAccountId());
+
+    System.out.println("Find account by number: PASSED");
+}
+
+@Test
+void testExistsByAccountNumber() {
+
+    Account existingAccount =
+            accountRepository.findAll().get(0);
+
+    assertTrue(accountRepository.existsByAccountNumber(
+            existingAccount.getAccountNumber()));
+
+    System.out.println("Account existence check: PASSED");
+}
+
+@Test
+void testFindAccountsByCustomerId() {
+
+    Account existingAccount =
+            accountRepository.findAll().get(0);
+
+    Long customerId =
+            existingAccount.getCustomer().getCustomerId();
+
+    List<Account> accounts =
+            accountRepository.findByCustomer_CustomerId(
+                    customerId);
+
+    assertFalse(accounts.isEmpty());
+
+    for (Account account : accounts) {
+
+        assertEquals(customerId,
+                account.getCustomer().getCustomerId());
+    }
+
+    assertTrue(accounts.stream().anyMatch(account ->
+            account.getAccountId().equals(
+                    existingAccount.getAccountId())));
+
+    System.out.println("Customer account relationship: PASSED");
+}
+
+@Test
+void testFindByAccountStatus() {
+
+    Account existingAccount =
+            accountRepository.findAll().get(0);
+
+    String status = existingAccount.getAccountStatus();
+
+    List<Account> accounts =
+            accountRepository.findByAccountStatus(status);
+
+    assertFalse(accounts.isEmpty());
+
+    for (Account account : accounts) {
+
+        assertEquals(status, account.getAccountStatus());
+    }
+
+    System.out.println("Find accounts by status: PASSED");
+}
+
+
 }
