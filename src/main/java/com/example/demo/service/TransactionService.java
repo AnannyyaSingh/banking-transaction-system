@@ -8,16 +8,21 @@ import com.example.demo.dto.response.TransactionResponse;
 import com.example.demo.dto.response.TransactionAuditResponse;
 import com.example.demo.dto.response.FailedTransactionResponse;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+
 import java.util.List;
 
 public interface TransactionService {
 
-    TransactionResponse deposit(DepositRequest request);
+    TransactionResponse deposit(
+            @NotNull @Valid DepositRequest request);
 
     TransactionResponse withdraw(
-            WithdrawalRequest request);
+            @NotNull @Valid WithdrawalRequest request);
 
-    TransactionResponse transfer(TransferRequest request);
+    TransactionResponse transfer(
+            @NotNull @Valid TransferRequest request);
 
     TransactionResponse getTransactionById(
             Long transactionId);
