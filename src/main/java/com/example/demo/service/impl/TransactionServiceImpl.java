@@ -22,6 +22,7 @@ import com.example.demo.service.TransactionService;
 import com.example.demo.service.TransactionExecutionService;
 import com.example.demo.service.TransactionFailureService;
 import com.example.demo.service.IdempotencyService;
+import com.example.demo.service.TransactionRetryService;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,6 +55,7 @@ public class TransactionServiceImpl implements TransactionService {
     private final TransactionExecutionService executionService;
     private final TransactionFailureService failureService;
     private final IdempotencyService idempotencyService;
+    private final TransactionRetryService retryService;
 
     private final AccountRepository accountRepository;
     private final BankTransactionRepository bankTransactionRepository;
@@ -67,6 +69,7 @@ public class TransactionServiceImpl implements TransactionService {
             TransactionExecutionService executionService,
             TransactionFailureService failureService,
             IdempotencyService idempotencyService,
+            TransactionRetryService retryService,
             AccountRepository accountRepository,
             BankTransactionRepository bankTransactionRepository,
             TransactionAuditRepository transactionAuditRepository,
@@ -76,6 +79,7 @@ public class TransactionServiceImpl implements TransactionService {
         this.executionService = executionService;
         this.failureService = failureService;
         this.idempotencyService = idempotencyService;
+        this.retryService = retryService;
 
         this.accountRepository = accountRepository;
         this.bankTransactionRepository = bankTransactionRepository;
@@ -166,7 +170,11 @@ public class TransactionServiceImpl implements TransactionService {
 
         try {
 
-            BankTransaction transaction = operation.get();
+            BankTransaction transaction =
+                    retryService.executeWithRetry(
+                            transactionType.name(),
+                            operation
+                    );
 
             return toTransactionResponse(transaction);
 
